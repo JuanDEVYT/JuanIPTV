@@ -1,7 +1,7 @@
 {
   "id": "juan-iptv",
   "name": "JuanIPTV",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "apiVersion": 6,
   "entry": "plugin.js",
   "description": "Canales en vivo, peliculas y series de tu servicio IPTV con Xtream Codes (iptv-factory.com)",
@@ -29,6 +29,8 @@
     "surface":    "#1C1100",
     "highlight":  "#FFD700"
   },
+  "debug": true,
+  "telemetry": true,
   "settings": [
     {
       "key": "hdrCuenta",
@@ -93,6 +95,5 @@
       ]
     }
   ],
-  "categories": ["movies", "series", "live"],
-  "debug": false
+  "categories": ["movies", "series", "live"]
 }

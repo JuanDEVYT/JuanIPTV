@@ -1,6 +1,7 @@
 /// <reference path="./kino.d.ts" />
 // JuanIPTV — plugin Kino para iptv-factory.com (Xtream Codes API)
 // language: JavaScript ES2020, target: Kino apiVersion 6, QuickJS
+// v1.1.0 — logging con kino.log en todas las funciones exportadas
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Config helpers
@@ -21,6 +22,7 @@ async function apiCall(params) {
   const user   = getUser();
   const pass   = getPass();
   if (!server || !user || !pass) {
+    kino.log("JP:api missing_config server=" + !!server + " user=" + !!user + " pass=" + !!pass);
     throw kino.error("auth_required", "falta configuracion");
   }
   const base = { username: user, password: pass };
@@ -29,8 +31,13 @@ async function apiCall(params) {
     .map(function(k) { return encodeURIComponent(k) + "=" + encodeURIComponent(merged[k]); })
     .join("&");
   const url = server + "/player_api.php?" + qs;
+  kino.log("JP:api action=" + (params.action || "?"));
   const r = await kino.fetch(url);
-  if (!r.ok) throw kino.error("unavailable", "HTTP " + r.status);
+  if (!r.ok) {
+    kino.log("JP:api http_err status=" + r.status + " action=" + (params.action || "?"));
+    throw kino.error("unavailable", "HTTP " + r.status);
+  }
+  kino.log("JP:api ok action=" + (params.action || "?") + " status=" + r.status);
   return r.json();
 }
 
@@ -46,14 +53,18 @@ function streamUrl(type, id, ext) {
 var _cache = {};
 async function cached(key, ttlMs, fn) {
   var entry = _cache[key];
-  if (entry && (Date.now() - entry.ts) < ttlMs) return entry.val;
+  if (entry && (Date.now() - entry.ts) < ttlMs) {
+    kino.log("JP:cache hit key=" + key);
+    return entry.val;
+  }
+  kino.log("JP:cache miss key=" + key);
   var val = await fn();
   _cache[key] = { val: val, ts: Date.now() };
   return val;
 }
 
-var TTL_LIVE = 5  * 60 * 1000;   // 5 min — live categories refresh faster
-var TTL_VOD  = 15 * 60 * 1000;   // 15 min — VOD / series change less often
+var TTL_LIVE = 5  * 60 * 1000;   // 5 min
+var TTL_VOD  = 15 * 60 * 1000;   // 15 min
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cached API fetches
@@ -180,30 +191,40 @@ function genreForName(name) {
 export async function settingsStatus() {
   try {
     var saved = await kino.storage.get("connStatus");
+    kino.log("JP:settingsStatus val=" + (saved || "none"));
     return { connStatus: saved || "Sin verificar" };
-  } catch (_) {
+  } catch (e) {
+    kino.log("JP:settingsStatus err", e.message);
     return { connStatus: "Sin verificar" };
   }
 }
 
 export async function validateSettings(s) {
-  if (!s.server)   return { error: "server",   message: "Escribe la URL del servidor" };
-  if (!s.username) return { error: "username",  message: "Escribe tu usuario" };
-  if (!s.password) return { error: "password",  message: "Escribe tu contrasena" };
+  kino.log("JP:validate keys=" + Object.keys(s).join(","));
+  if (!s.server)   { kino.log("JP:validate missing=server");   return { error: "server",   message: "Escribe la URL del servidor" }; }
+  if (!s.username) { kino.log("JP:validate missing=username"); return { error: "username",  message: "Escribe tu usuario" }; }
+  if (!s.password) { kino.log("JP:validate missing=password"); return { error: "password",  message: "Escribe tu contrasena" }; }
+  kino.log("JP:validate ok");
   return null;
 }
 
 export async function action(key) {
   if (key === "testConn") {
+    kino.log("JP:action testConn start");
     try {
       var d = await apiCall({ action: "get_live_categories" });
-      if (!Array.isArray(d)) throw new Error("respuesta invalida");
+      if (!Array.isArray(d)) {
+        kino.log("JP:action testConn invalid_response type=" + typeof d);
+        throw new Error("respuesta invalida");
+      }
+      kino.log("JP:action testConn ok cats=" + d.length);
       await kino.storage.set("connStatus", "Conectado correctamente");
       return {
         message: "Conexion exitosa con el servidor",
         status:  { connStatus: "Conectado correctamente" },
       };
-    } catch (_) {
+    } catch (e) {
+      kino.log("JP:action testConn fail code=" + (e.code || "?") + " msg=" + String(e.message).slice(0, 80));
       await kino.storage.set("connStatus", "Sin conexion");
       return {
         message: "No se pudo conectar al servidor",
@@ -211,6 +232,7 @@ export async function action(key) {
       };
     }
   }
+  kino.log("JP:action unknown key=" + key);
   return null;
 }
 
@@ -219,6 +241,7 @@ export async function action(key) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function section({ tab }) {
+  kino.log("JP:section start tab=" + (tab || "none"));
   var tabs = [
     { id: "live",      label: "En Vivo" },
     { id: "peliculas", label: "Peliculas" },
@@ -226,6 +249,7 @@ export async function section({ tab }) {
   ];
   var chosen = tabs.some(function(t) { return t.id === tab; }) ? tab : "live";
   var rows = await buildSectionRows(chosen);
+  kino.log("JP:section done tab=" + chosen + " rows=" + rows.length);
   return { tabs: tabs, tab: chosen, rows: rows };
 }
 
@@ -235,6 +259,7 @@ async function buildSectionRows(tab) {
 
   if (tab === "live") {
     var liveCats = await getLiveCats();
+    kino.log("JP:sect-live cats=" + liveCats.length);
     for (var i = 0; i < Math.min(liveCats.length, 12); i++) {
       var cat = liveCats[i];
       try {
@@ -248,13 +273,17 @@ async function buildSectionRows(tab) {
           items: chs.slice(0, ps).map(liveToItem),
         });
         if (rows.length >= 8) break;
-      } catch (_) {}
+      } catch (e) {
+        kino.log("JP:sect-live err catId=" + cat.category_id + " code=" + (e.code || "?"));
+      }
     }
+    kino.log("JP:sect-live done rows=" + rows.length);
     return rows;
   }
 
   if (tab === "peliculas") {
     var vodCats = await getVodCats();
+    kino.log("JP:sect-peliculas cats=" + vodCats.length);
     for (var i = 0; i < Math.min(vodCats.length, 10); i++) {
       var cat = vodCats[i];
       try {
@@ -268,13 +297,17 @@ async function buildSectionRows(tab) {
           items: vs.slice(0, ps).map(vodToItem),
         });
         if (rows.length >= 8) break;
-      } catch (_) {}
+      } catch (e) {
+        kino.log("JP:sect-peliculas err catId=" + cat.category_id + " code=" + (e.code || "?"));
+      }
     }
+    kino.log("JP:sect-peliculas done rows=" + rows.length);
     return rows;
   }
 
   if (tab === "series") {
     var serCats = await getSerCats();
+    kino.log("JP:sect-series cats=" + serCats.length);
     for (var i = 0; i < Math.min(serCats.length, 10); i++) {
       var cat = serCats[i];
       try {
@@ -288,11 +321,15 @@ async function buildSectionRows(tab) {
           items: ss.slice(0, ps).map(seriesToItem),
         });
         if (rows.length >= 8) break;
-      } catch (_) {}
+      } catch (e) {
+        kino.log("JP:sect-series err catId=" + cat.category_id + " code=" + (e.code || "?"));
+      }
     }
+    kino.log("JP:sect-series done rows=" + rows.length);
     return rows;
   }
 
+  kino.log("JP:sect unknown tab=" + tab);
   return [];
 }
 
@@ -301,9 +338,10 @@ async function buildSectionRows(tab) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function categories() {
+  kino.log("JP:categories start");
   var vodCats, serCats;
-  try { vodCats = await getVodCats(); } catch(_) { vodCats = []; }
-  try { serCats = await getSerCats(); } catch(_) { serCats = []; }
+  try { vodCats = await getVodCats(); } catch(e) { vodCats = []; kino.log("JP:categories err_vod code=" + (e.code || "?")); }
+  try { serCats = await getSerCats(); } catch(e) { serCats = []; kino.log("JP:categories err_ser code=" + (e.code || "?")); }
 
   var result = [];
   var i;
@@ -323,7 +361,9 @@ export async function categories() {
       ref:   "ser-cat:" + c.category_id,
     });
   }
-  return result.slice(0, 24);
+  var final = result.slice(0, 24);
+  kino.log("JP:categories done n=" + final.length + " vod=" + Math.min(vodCats.length, 12) + " ser=" + Math.min(serCats.length, 12));
+  return final;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -331,54 +371,65 @@ export async function categories() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function home() {
+  kino.log("JP:home start");
   var ps = getPage();
   var rows = [];
   var liveCats = [], vodCats = [], serCats = [];
 
-  try { liveCats = await getLiveCats(); } catch(_) {}
-  try { vodCats  = await getVodCats();  } catch(_) {}
-  try { serCats  = await getSerCats();  } catch(_) {}
+  try { liveCats = await getLiveCats(); } catch(e) { kino.log("JP:home err_liveCats code=" + (e.code || "?")); }
+  try { vodCats  = await getVodCats();  } catch(e) { kino.log("JP:home err_vodCats code="  + (e.code || "?")); }
+  try { serCats  = await getSerCats();  } catch(e) { kino.log("JP:home err_serCats code="  + (e.code || "?")); }
+  kino.log("JP:home cats live=" + liveCats.length + " vod=" + vodCats.length + " ser=" + serCats.length);
 
   // Fila 1: canales en vivo del primer grupo
   if (liveCats.length) {
     try {
       var chs = await getLiveStreams(liveCats[0].category_id);
-      if (chs.length) rows.push({
-        id:    "home-live-top",
-        title: "Canales en Vivo",
-        ref:   "live-cat:" + liveCats[0].category_id,
-        genre: "entretenimiento",
-        items: chs.slice(0, ps).map(liveToItem),
-      });
-    } catch(_) {}
+      if (chs.length) {
+        rows.push({
+          id:    "home-live-top",
+          title: "Canales en Vivo",
+          ref:   "live-cat:" + liveCats[0].category_id,
+          genre: "entretenimiento",
+          items: chs.slice(0, ps).map(liveToItem),
+        });
+        kino.log("JP:home row_live_top ch=" + chs.length);
+      }
+    } catch(e) { kino.log("JP:home err_live_top code=" + (e.code || "?")); }
   }
 
   // Fila 2: películas destacadas
   if (vodCats.length) {
     try {
       var vs = await getVodStreams(vodCats[0].category_id);
-      if (vs.length) rows.push({
-        id:    "home-vod-top",
-        title: "Peliculas Destacadas",
-        ref:   "vod-cat:" + vodCats[0].category_id,
-        genre: "peliculas",
-        items: vs.slice(0, ps).map(vodToItem),
-      });
-    } catch(_) {}
+      if (vs.length) {
+        rows.push({
+          id:    "home-vod-top",
+          title: "Peliculas Destacadas",
+          ref:   "vod-cat:" + vodCats[0].category_id,
+          genre: "peliculas",
+          items: vs.slice(0, ps).map(vodToItem),
+        });
+        kino.log("JP:home row_vod_top items=" + vs.length);
+      }
+    } catch(e) { kino.log("JP:home err_vod_top code=" + (e.code || "?")); }
   }
 
   // Fila 3: series destacadas
   if (serCats.length) {
     try {
       var ss = await getSerStreams(serCats[0].category_id);
-      if (ss.length) rows.push({
-        id:    "home-ser-top",
-        title: "Series Destacadas",
-        ref:   "ser-cat:" + serCats[0].category_id,
-        genre: "series",
-        items: ss.slice(0, ps).map(seriesToItem),
-      });
-    } catch(_) {}
+      if (ss.length) {
+        rows.push({
+          id:    "home-ser-top",
+          title: "Series Destacadas",
+          ref:   "ser-cat:" + serCats[0].category_id,
+          genre: "series",
+          items: ss.slice(0, ps).map(seriesToItem),
+        });
+        kino.log("JP:home row_ser_top items=" + ss.length);
+      }
+    } catch(e) { kino.log("JP:home err_ser_top code=" + (e.code || "?")); }
   }
 
   // Más categorías de canales en vivo
@@ -396,7 +447,7 @@ export async function home() {
         genre: genreForName(cat.category_name),
         items: chs.slice(0, ps).map(liveToItem),
       });
-    } catch(_) {}
+    } catch(e) { kino.log("JP:home err_extra_live i=" + i + " code=" + (e.code || "?")); }
   }
 
   // Más categorías de películas
@@ -413,7 +464,7 @@ export async function home() {
         genre: "peliculas",
         items: vs.slice(0, ps).map(vodToItem),
       });
-    } catch(_) {}
+    } catch(e) { kino.log("JP:home err_extra_vod i=" + i + " code=" + (e.code || "?")); }
   }
 
   // Más categorías de series
@@ -430,10 +481,12 @@ export async function home() {
         genre: "series",
         items: ss.slice(0, ps).map(seriesToItem),
       });
-    } catch(_) {}
+    } catch(e) { kino.log("JP:home err_extra_ser i=" + i + " code=" + (e.code || "?")); }
   }
 
-  return rows.slice(0, 20);
+  var final = rows.slice(0, 20);
+  kino.log("JP:home done rows=" + final.length);
+  return final;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -446,16 +499,23 @@ export async function search(query) {
   var within = query.within;
   var cursor = query.cursor;
 
+  kino.log("JP:search type=" + type + " q_len=" + q.length + " within=" + (within || "none"));
+
   // scopedSearch — filtrar dentro de un browse
   if (within) {
+    kino.log("JP:search scoped ref=" + within + " cursor=" + (cursor || "start"));
     var page     = await doBrowse(within, cursor);
     var filtered = page.items.filter(function(item) {
       return (item.title || "").toLowerCase().indexOf(q) !== -1;
     });
+    kino.log("JP:search scoped total=" + page.items.length + " matched=" + filtered.length);
     return { items: filtered, next: page.next };
   }
 
-  if (!q) return [];
+  if (!q) {
+    kino.log("JP:search empty_q");
+    return [];
+  }
 
   var results = [];
 
@@ -465,10 +525,11 @@ export async function search(query) {
       var matched = allVod.filter(function(v) {
         return (v.name || "").toLowerCase().indexOf(q) !== -1;
       });
+      kino.log("JP:search vod catalog=" + allVod.length + " matched=" + Math.min(matched.length, 50));
       for (var i = 0; i < Math.min(matched.length, 50); i++) {
         results.push(vodToItem(matched[i]));
       }
-    } catch(_) {}
+    } catch(e) { kino.log("JP:search err_vod code=" + (e.code || "?")); }
   }
 
   if (type !== "movie") {
@@ -477,13 +538,16 @@ export async function search(query) {
       var matched = allSer.filter(function(s) {
         return (s.name || "").toLowerCase().indexOf(q) !== -1;
       });
+      kino.log("JP:search ser catalog=" + allSer.length + " matched=" + Math.min(matched.length, 50));
       for (var i = 0; i < Math.min(matched.length, 50); i++) {
         results.push(seriesToItem(matched[i]));
       }
-    } catch(_) {}
+    } catch(e) { kino.log("JP:search err_ser code=" + (e.code || "?")); }
   }
 
-  return results.slice(0, 100);
+  var final = results.slice(0, 100);
+  kino.log("JP:search done results=" + final.length);
+  return final;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -491,6 +555,7 @@ export async function search(query) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function browse(ref, cursor) {
+  kino.log("JP:browse ref=" + ref + " cursor=" + (cursor || "start"));
   return doBrowse(ref, cursor);
 }
 
@@ -510,12 +575,14 @@ async function doBrowse(ref, cursor) {
     all    = await getSerStreams(ref.slice(8));
     mapper = seriesToItem;
   } else {
+    kino.log("JP:browse unknown_ref=" + ref);
     return { items: [] };
   }
 
   var slice = all.slice(offset, offset + ps);
   var items = slice.map(mapper);
   var next  = (offset + ps < all.length) ? String(offset + ps) : undefined;
+  kino.log("JP:browse total=" + all.length + " offset=" + offset + " items=" + items.length + " hasNext=" + !!next);
   return { items: items, next: next };
 }
 
@@ -525,15 +592,18 @@ async function doBrowse(ref, cursor) {
 
 export async function episodes(ref) {
   if (ref.indexOf("ser:") !== 0) {
+    kino.log("JP:episodes invalid_ref=" + ref.slice(0, 40));
     throw kino.error("not_found", "ref invalido para series");
   }
   var seriesId = ref.slice(4);
+  kino.log("JP:episodes start seriesId=" + seriesId);
 
   var data = await cached("series_info_" + seriesId, TTL_VOD, async function() {
     return apiCall({ action: "get_series_info", series_id: seriesId });
   });
 
   if (!data || !data.episodes) {
+    kino.log("JP:episodes no_episodes seriesId=" + seriesId);
     throw kino.error("not_found", "serie sin episodios");
   }
 
@@ -589,6 +659,7 @@ export async function episodes(ref) {
     };
   });
 
+  kino.log("JP:episodes done seriesId=" + seriesId + " seasons=" + seasons.length + " eps=" + eps.length);
   return { series: seriesInfo, episodes: eps, seasons: seasons };
 }
 
@@ -598,10 +669,12 @@ export async function episodes(ref) {
 
 export async function resolve(ref) {
   var fmt = getFmt();
+  kino.log("JP:resolve start ref=" + ref.slice(0, 40) + " fmt=" + fmt);
 
   // Canal en vivo
   if (ref.indexOf("live:") === 0) {
     var id = ref.slice(5);
+    kino.log("JP:resolve live id=" + id);
     return {
       url:   streamUrl("live", id, fmt),
       label: "En Vivo",
@@ -613,6 +686,7 @@ export async function resolve(ref) {
     var parts = ref.slice(4).split(":");
     var id    = parts[0];
     var ext   = parts[1] || "mkv";
+    kino.log("JP:resolve vod id=" + id + " ext=" + ext);
     var primary = streamUrl("movie", id, ext);
     var alts = [];
     if (ext !== "mp4") alts.push({ url: streamUrl("movie", id, "mp4"), label: "MP4" });
@@ -630,6 +704,7 @@ export async function resolve(ref) {
     var parts = ref.slice(3).split(":");
     var id    = parts[0];
     var ext   = parts[1] || "mkv";
+    kino.log("JP:resolve ep id=" + id + " ext=" + ext);
     var primary = streamUrl("series", id, ext);
     var alts = [];
     if (ext !== "mp4") alts.push({ url: streamUrl("series", id, "mp4"), label: "MP4" });
@@ -642,6 +717,7 @@ export async function resolve(ref) {
     };
   }
 
+  kino.log("JP:resolve unknown_ref=" + ref.slice(0, 40));
   throw kino.error("not_found", "ref desconocido: " + ref);
 }
 
@@ -650,7 +726,9 @@ export async function resolve(ref) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function liveCategories() {
+  kino.log("JP:liveCategories start");
   var cats = await getLiveCats();
+  kino.log("JP:liveCategories done n=" + cats.length);
   return cats.map(function(c) {
     return {
       id:    String(c.category_id),
@@ -663,6 +741,7 @@ export async function liveCategories() {
 export async function liveChannels({ categoryId, cursor }) {
   var ps     = getPage();
   var offset = cursor ? parseInt(cursor, 10) : 0;
+  kino.log("JP:liveChannels start catId=" + categoryId + " offset=" + offset);
   var all    = await getLiveStreams(categoryId);
   var slice  = all.slice(offset, offset + ps);
   var items  = slice.map(function(ch) {
@@ -676,5 +755,6 @@ export async function liveChannels({ categoryId, cursor }) {
     };
   });
   var next = (offset + ps < all.length) ? String(offset + ps) : undefined;
+  kino.log("JP:liveChannels done total=" + all.length + " items=" + items.length + " hasNext=" + !!next);
   return { items: items, next: next };
 }
