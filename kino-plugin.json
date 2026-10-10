@@ -1,99 +1,33 @@
 {
   "id": "juan-iptv",
   "name": "JuanIPTV",
-  "version": "1.1.0",
-  "apiVersion": 6,
+  "version": "1.0.0",
+  "apiVersion": 3,
   "entry": "plugin.js",
-  "description": "Canales en vivo, peliculas y series de tu servicio IPTV con Xtream Codes (iptv-factory.com)",
-  "author": "Juan",
-  "homepage": "https://github.com/tu-usuario/juan-iptv",
-  "icon": "icon.png",
-  "color": "#F5A623",
+  "description": "Genera y prueba cuentas IPTV automáticamente. Busca servidores activos y te da canales en vivo sin configurar nada.",
+  "author": "juansecondary473@gmail.com",
   "hosts": [],
-  "streamHosts": "any",
-  "capabilities": [
-    "search",
-    "home",
-    "browse",
-    "episodes",
-    "resolve",
-    "channels",
-    "scopedSearch",
-    "download"
-  ],
-  "section": { "label": "JuanIPTV" },
-  "theme": {
-    "accent":     "#F5A623",
-    "onAccent":   "#1A0A00",
-    "background": "#0D0800",
-    "surface":    "#1C1100",
-    "highlight":  "#FFD700"
-  },
-  "debug": true,
-  "telemetry": true,
+  "capabilities": ["home", "resolve", "channels"],
+  "liveStreamHosts": "any",
+  "color": "#E8A020",
+  "icon": "icon.png",
   "settings": [
     {
-      "key": "hdrCuenta",
-      "label": "Cuenta IPTV",
-      "type": "section",
-      "hint": "Datos del servicio en iptv-factory.com"
-    },
-    {
-      "key": "server",
-      "label": "Servidor",
+      "key": "fuenteExtra",
+      "label": "Fuente extra (opcional)",
       "type": "url",
-      "required": true,
-      "hint": "http://iptv-factory.com:8080"
+      "hint": "URL de un Pastebin o lista raw con cuentas Xtream"
     },
     {
-      "key": "username",
-      "label": "Usuario",
-      "type": "text",
-      "required": true
-    },
-    {
-      "key": "password",
-      "label": "Contrasena",
-      "type": "password",
-      "required": true
-    },
-    {
-      "key": "connStatus",
-      "label": "Estado de conexion",
-      "type": "status"
-    },
-    {
-      "key": "testConn",
-      "label": "Probar conexion",
-      "type": "action",
-      "confirm": "Verificar credenciales con el servidor?"
-    },
-    {
-      "key": "hdrOpts",
-      "label": "Opciones de reproduccion",
-      "type": "section"
-    },
-    {
-      "key": "streamFmt",
-      "label": "Formato de stream",
+      "key": "maxCuentas",
+      "label": "Máximo de servidores a probar",
       "type": "select",
-      "default": "m3u8",
       "options": [
-        { "value": "m3u8", "label": "HLS m3u8 (recomendado)" },
-        { "value": "ts",   "label": "MPEG-TS" }
-      ]
-    },
-    {
-      "key": "pageSize",
-      "label": "Titulos por fila",
-      "type": "select",
-      "default": "60",
-      "options": [
-        { "value": "30",  "label": "30" },
-        { "value": "60",  "label": "60 (por defecto)" },
-        { "value": "100", "label": "100" }
-      ]
+        { "value": "5", "label": "5 (rápido)" },
+        { "value": "10", "label": "10" },
+        { "value": "20", "label": "20 (completo)" }
+      ],
+      "default": "10"
     }
-  ],
-  "categories": ["movies", "series", "live"]
+  ]
 }
