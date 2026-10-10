@@ -1,98 +1,98 @@
 {
-  "id": "archive-org",
-  "name": "Internet Archive",
-  "version": "1.4.2",
-  "apiVersion": 3,
+  "id": "juan-iptv",
+  "name": "JuanIPTV",
+  "version": "1.0.0",
+  "apiVersion": 6,
   "entry": "plugin.js",
-  "description": "Películas de dominio público y televisión clásica de archive.org",
-  "author": "kinotvapp",
-  "homepage": "https://github.com/kinotvapp/kino-plugin-archive",
-  "hosts": [
-    "archive.org",
-    "*.archive.org"
-  ],
+  "description": "Canales en vivo, peliculas y series de tu servicio IPTV con Xtream Codes (iptv-factory.com)",
+  "author": "Juan",
+  "homepage": "https://github.com/tu-usuario/juan-iptv",
+  "icon": "icon.png",
+  "color": "#F5A623",
+  "hosts": [],
+  "streamHosts": "any",
   "capabilities": [
     "search",
     "home",
     "browse",
     "episodes",
     "resolve",
+    "channels",
+    "scopedSearch",
     "download"
   ],
-  "color": "#E0A030",
-  "icon": "icon.png",
+  "section": { "label": "JuanIPTV" },
+  "theme": {
+    "accent":     "#F5A623",
+    "onAccent":   "#1A0A00",
+    "background": "#0D0800",
+    "surface":    "#1C1100",
+    "highlight":  "#FFD700"
+  },
   "settings": [
     {
-      "key": "url1",
-      "label": "Dirección 1",
+      "key": "hdrCuenta",
+      "label": "Cuenta IPTV",
+      "type": "section",
+      "hint": "Datos del servicio en iptv-factory.com"
+    },
+    {
+      "key": "server",
+      "label": "Servidor",
       "type": "url",
-      "hint": "https://archive.org/details/… o una búsqueda"
+      "required": true,
+      "hint": "http://iptv-factory.com:8080"
     },
     {
-      "key": "cat1",
-      "label": "Categoría 1",
+      "key": "username",
+      "label": "Usuario",
       "type": "text",
-      "hint": "Opcional: nombre de la fila en el Home"
+      "required": true
     },
     {
-      "key": "url2",
-      "label": "Dirección 2",
-      "type": "url",
-      "hint": "https://archive.org/details/… o una búsqueda"
+      "key": "password",
+      "label": "Contrasena",
+      "type": "password",
+      "required": true
     },
     {
-      "key": "cat2",
-      "label": "Categoría 2",
-      "type": "text",
-      "hint": "Opcional: nombre de la fila en el Home"
+      "key": "connStatus",
+      "label": "Estado de conexion",
+      "type": "status"
     },
     {
-      "key": "url3",
-      "label": "Dirección 3",
-      "type": "url",
-      "hint": "https://archive.org/details/… o una búsqueda"
+      "key": "testConn",
+      "label": "Probar conexion",
+      "type": "action",
+      "confirm": "Verificar credenciales con el servidor?"
     },
     {
-      "key": "cat3",
-      "label": "Categoría 3",
-      "type": "text",
-      "hint": "Opcional: nombre de la fila en el Home"
+      "key": "hdrOpts",
+      "label": "Opciones de reproduccion",
+      "type": "section"
     },
     {
-      "key": "url4",
-      "label": "Dirección 4",
-      "type": "url",
-      "hint": "https://archive.org/details/… o una búsqueda"
+      "key": "streamFmt",
+      "label": "Formato de stream",
+      "type": "select",
+      "default": "m3u8",
+      "options": [
+        { "value": "m3u8", "label": "HLS m3u8 (recomendado)" },
+        { "value": "ts",   "label": "MPEG-TS" }
+      ]
     },
     {
-      "key": "cat4",
-      "label": "Categoría 4",
-      "type": "text",
-      "hint": "Opcional: nombre de la fila en el Home"
-    },
-    {
-      "key": "url5",
-      "label": "Dirección 5",
-      "type": "url",
-      "hint": "https://archive.org/details/… o una búsqueda"
-    },
-    {
-      "key": "cat5",
-      "label": "Categoría 5",
-      "type": "text",
-      "hint": "Opcional: nombre de la fila en el Home"
-    },
-    {
-      "key": "url6",
-      "label": "Dirección 6",
-      "type": "url",
-      "hint": "https://archive.org/details/… o una búsqueda"
-    },
-    {
-      "key": "cat6",
-      "label": "Categoría 6",
-      "type": "text",
-      "hint": "Opcional: nombre de la fila en el Home"
+      "key": "pageSize",
+      "label": "Titulos por fila",
+      "type": "select",
+      "default": "60",
+      "options": [
+        { "value": "30",  "label": "30" },
+        { "value": "60",  "label": "60 (por defecto)" },
+        { "value": "100", "label": "100" }
+      ]
     }
-  ]
+  ],
+  "categories": ["movies", "series", "live"],
+  "debug": false
 }

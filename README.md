@@ -1,95 +1,148 @@
-# Internet Archive plugin for Kino
+# JuanIPTV — plugin para Kino
 
-A plugin for the Kino video app that brings the public-domain films and classic TV of
-[archive.org](https://archive.org) into Kino's search, Home and player. It is the reference example
-for plugin authors: one manifest, one JavaScript file, no build step.
+Un plugin para la app Kino que conecta tu servicio de [iptv-factory.com](https://iptv-factory.com)
+(o cualquier proveedor con **Xtream Codes API**) a la búsqueda, el Inicio, la sección propia, los canales
+en vivo y el reproductor de Kino. Un manifiesto, un archivo JavaScript, sin pasos de compilación.
 
-## What it does
+## Qué hace
 
-| Capability | How |
-| --- | --- |
-| `search` | Titles in both the `feature_films` (movies) and `classic_tv` (series) collections, up to 25 from each. Besides what was typed (`q`), it asks for the `originalTitle` and up to two of the `altTitles` Kino sends (at most four distinct titles, each cut to its head with `kino.rank.shortQuery`, all asked at once), so a Spanish title finds a film archive.org lists under its original one ("Asalto y robo de un tren" finds *The Great Train Robbery*). An item found more than once is listed once; the rest are ranked with `kino.rank.sortBySimilarity` against every title, near-misses are dropped with `kino.rank.filterRelevant` (an item whose identifier is the title itself always stays), and when Kino knows the `year`, what is from that year (±1) comes first among equals. The `type` Kino sends is only an ordering preference (the collection that matches it comes first), never a filter, because TMDB's movie/tv split does not line up with archive.org's: public-domain films and classic TV are mixed, and a title can exist as both. Characters and words that are query syntax to archive.org (`/`, `-`, `&`, `AND`, `OR`, `NOT`) are cleaned out of what the person typed. |
-| `home` | Three rows: public-domain films, classic TV and classic animation, by downloads, 30 titles each, after the person's own rows if they set addresses (see below). Each row carries a `ref`, so Kino ends it with a "Ver más" card. |
-| `browse` | "Ver más" on a Home row: the same query as the row, 50 titles per page, the page number as the cursor (`"2"`, `"3"`, …). |
-| `episodes` | The video files of an item, in natural order. Files named `S01E02` get that season and number; otherwise they are numbered 1, 2, 3 in order. |
-| `resolve` | The file to play: the item's own mp4/m4v/webm, or the best mp4 archive.org derived from the original (`.avi`, `.mpg`, `.mkv`, `.divx`...). Sibling `.vtt`/`.srt` files become subtitles. |
-| `download` | Declarative, no code: Kino offers the titles for offline viewing on phones and saves what `resolve` returns. That is always one progressive file (mp4, m4v or webm, with its `mime`), never an HLS/DASH manifest, so every title that plays can be downloaded. Installing or updating to a version with it shows "Puede descargar videos para verlos sin conexión". |
+| Capacidad   | Cómo                                                                                                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `home`      | Hasta 20 filas: canales en vivo del primer grupo, películas y series destacadas, más categorías según el catálogo de tu servidor.                                            |
+| `search`    | Busca en todo el catálogo de películas y series. `type` de Kino ordena los resultados (el tipo que nombra va primero) pero nunca filtra: una fuente puede tener lo mismo como película y como serie. |
+| `browse`    | Paginación de cualquier fila o categoría: `live-cat:`, `vod-cat:`, `ser-cat:`. El cursor es el desplazamiento en la lista, opaco para Kino.                                  |
+| `episodes`  | Temporadas y episodios de una serie desde `get_series_info`. La respuesta de Xtream agrupa episodios por número de temporada; el plugin los ordena y expone el selector de temporadas. |
+| `resolve`   | URL de reproducción en formato `<servidor>/<tipo>/<usuario>/<contraseña>/<id>.<ext>`. Devuelve alternativas MP4/MKV/TS para que Kino cambie de copia si el aparato no puede decodificar la primera. |
+| `channels`  | Pestaña **En vivo** nativa de Kino: categorías desde `get_live_categories`, canales desde `get_live_streams`. Cada canal tiene su número, logo y categoría.                  |
+| `scopedSearch` | "Buscar en esta categoría" filtra los títulos ya cargados en esa página contra la consulta, sin llamada extra al servidor.                                               |
+| `download`  | Descarga sin conexión para películas y episodios. Kino llama `resolve` en el momento de descargar; el plugin devuelve siempre una URL fresca.                                |
 
-Two things it does not try to be clever about, so do not copy them as intended behavior:
-an item found inside a collection or in the built-in rows that bundles several films is exposed as
-a single `movie`, and `resolve` plays its first video in natural name order (put its own address in
-Configurar to get one card per video); and episodes numbered `S01E00` (a pilot, a special)
-are dropped by Kino, whose episode numbers start at 1.
+Hay también una **sección propia** (`JuanIPTV` en la barra lateral del TV, chip en el celular) con tres
+pestañas — En Vivo, Películas, Series — y mosaicos propios en **Categorías**.
 
-## Your own addresses (Configurar)
+## Xtream Codes API
 
-Under Ajustes > Plugins > Internet Archive > Configurar the person can fill up to six archive.org
-addresses (Dirección 1 to 6), each with an optional category name (Categoría 1 to 6):
+El plugin habla con el endpoint estándar de Xtream Codes: `<servidor>/player_api.php?username=…&password=…`.
+Las llamadas que hace, con sus acciones, son:
 
-| Address | What it lists |
-| --- | --- |
-| `https://archive.org/details/<collection>` | the videos of that collection |
-| `https://archive.org/details/<item>` | that item (one with no collection filed under it): a single video is one card; an item with several videos is one card per video (`<item>~1`, `<item>~2`, ...), each playing its own file, and a search also looks at their titles |
-| `https://archive.org/search?query=...` | the videos a search returns (movies only) |
+| Acción                  | Cuándo la usa               | TTL de caché |
+| ----------------------- | --------------------------- | ------------ |
+| `get_live_categories`   | Inicio, sección En Vivo, pestaña En vivo | 5 min |
+| `get_live_streams`      | Fila de un grupo de canales, Browse       | 5 min |
+| `get_vod_categories`    | Inicio, sección Películas, Categorías    | 15 min |
+| `get_vod_streams`       | Fila de una categoría VOD, Browse        | 15 min |
+| `get_series_categories` | Inicio, sección Series, Categorías       | 15 min |
+| `get_series`            | Fila de una categoría de series, Browse  | 15 min |
+| `get_series_info`       | Episodios de una serie                   | 15 min |
+| `get_vod_streams` (todo)| Búsqueda global de películas             | 15 min |
+| `get_series` (todo)     | Búsqueda global de series                | 15 min |
 
-Each address becomes a Home row of its own, before the three built-in ones, newest additions first
-(`addeddate desc`), with the same "Ver más" paging. Addresses that share a category name (capitals
-do not matter; the row keeps the first spelling) are merged into one row for that name, asked of
-archive.org as a single `OR` query. A category with no valid address behind it makes no row. What is
-inside the addresses is also searched (by every title asked, in one request), and comes first in Kino's search results, unranked. Anything that is not
-archive.org, or not one of the three forms above, is ignored: the plugin only ever talks to
-archive.org. With no addresses the plugin behaves exactly as before.
+La caché vive en el sandbox de la sesión (variable de módulo). Se reinicia cuando la persona
+cambia un ajuste o la app cierra el plugin. La `kino.storage` se usa solo para el estado de conexión
+que muestra la pestaña de ajustes.
 
-These are twelve plain settings (`url1`/`cat1` ... `url6`/`cat6`), so the manifest stays at apiVersion 3 and installs
-on every Kino from 0.9.43 on. Versions 1.3.0 to 1.4.1 used one `list` setting (`sources`, apiVersion 4) that Kino
-0.9.43 could not install; addresses saved in that list are not carried over and have to be typed again.
-
-## Hosts, and why `*.archive.org`
-
-The manifest declares `archive.org` and `*.archive.org`, and the plugin can only talk to those.
-`https://archive.org/download/...` answers with a redirect to a storage node such as
-`dn720705.ca.archive.org`, and a wildcard does not cover its own bare domain (`*.archive.org` does
-not match `archive.org`), so both are listed. Kino shows the list to the person before installing.
-
-## Install it in Kino
-
-In Kino open Ajustes > Plugins and type the address of this repository:
+Las URLs de los streams tienen la forma:
 
 ```
-kinotvapp/kino-plugin-archive
+<servidor>/live/<usuario>/<contraseña>/<stream_id>.m3u8
+<servidor>/movie/<usuario>/<contraseña>/<vod_id>.mkv
+<servidor>/series/<usuario>/<contraseña>/<episode_id>.mkv
 ```
 
-Kino reads `kino-plugin.json` and `plugin.js` from the repository root, shows the hosts the plugin
-will reach and asks for approval before anything runs.
+El manifiesto declara `"streamHosts": "any"` para que los CDNs de terceros (los servidores de
+caché y relay que usan muchos proveedores IPTV) nunca bloqueen la reproducción. `hosts` está vacío
+porque el servidor lo escribe la persona en los ajustes, y Kino lo convierte en un host aprobado
+automáticamente.
 
-## Write your own plugin
+## Ajustes
 
-This repository is also the starting point for your own plugin:
+| Campo                   | Tipo       | Descripción                                                         |
+| ----------------------- | ---------- | ------------------------------------------------------------------- |
+| Servidor                | `url`      | Dirección del servidor Xtream: `http://iptv-factory.com:8080`       |
+| Usuario                 | `text`     | Tu nombre de usuario en el servicio                                  |
+| Contraseña              | `password` | Tu contraseña (se guarda cifrada en el dispositivo)                  |
+| Estado de conexión      | `status`   | Muestra "Conectado correctamente" o "Sin conexión" tras la prueba    |
+| Probar conexión         | `action`   | Verifica las credenciales con `get_live_categories` y actualiza el estado |
+| Formato de stream       | `select`   | HLS m3u8 (por defecto) o MPEG-TS                                     |
+| Títulos por fila        | `select`   | 30 / 60 (por defecto) / 100                                          |
 
-- The same guide is online, with a page per topic: <https://kinotvapp.github.io/kino-plugins/> ([first plugin](https://kinotvapp.github.io/kino-plugins/first-plugin/), [manifest](https://kinotvapp.github.io/kino-plugins/manifest/), [contract](https://kinotvapp.github.io/kino-plugins/contract/), [example plugins](https://kinotvapp.github.io/kino-plugins/examples/)).
-- [`GUIDE.md`](GUIDE.md) is the authoring guide: file layout, manifest and settings, the five
-  functions your code can export, the `kino` API, every limit, the quirks of the JavaScript engine
-  and five cookbook recipes.
-- [`contract.json`](contract.json) holds every number and rule Kino enforces, and
-  [`kino.d.ts`](kino.d.ts) declares the `kino` API for your editor.
-- [`sdk/`](sdk) lets you run and test a plugin on your computer with Node 18 or newer, using the same
-  `kino` API as the app and checking what you return the way Kino does:
+Un ajuste `required` sin valor frena cualquier llamada: Kino muestra "Falta configurar" hasta que
+la persona complete el servidor, usuario y contraseña.
+
+## Tema de color
+
+El plugin usa la paleta naranja-amarillo sobre fondo oscuro:
+
+| Token        | Valor     | Uso principal                                                        |
+| ------------ | --------- | -------------------------------------------------------------------- |
+| `accent`     | `#F5A623` | Pestañas, chips, botones, barra de progreso del reproductor          |
+| `onAccent`   | `#1A0A00` | Texto e íconos sobre el acento (contraste 9.8:1)                     |
+| `background` | `#0D0800` | Fondo de la sección propia y de los ajustes                          |
+| `surface`    | `#1C1100` | Tarjetas y pestañas no seleccionadas dentro de la sección            |
+| `highlight`  | `#FFD700` | Texto destacado, título del grupo en Categorías (contraste 14:1)     |
+
+Todos los valores pasan los controles de legibilidad de Kino (luminancia, separación de superficies,
+distancia con el rojo de Kino `#E50914`). El `color` del manifiesto (`#F5A623`) pinta la pestaña y
+los chips del plugin en la tienda, independientemente del tema.
+
+## Instalar en Kino
+
+En Kino abre **Ajustes ▸ Plugins** y escribe la dirección de tu repositorio de GitHub:
 
 ```
-node sdk/run.mjs ./plugin.js search "metropolis"
-node sdk/run.mjs ./plugin.js home
-node sdk/run.mjs ./plugin.js browse films 2
+tu-usuario/juan-iptv
+```
+
+Kino lee `kino-plugin.json` y `plugin.js` desde la raíz, muestra con qué va a hablar el plugin
+(el servidor que tú escribas en Configurar) y pide aprobación antes de ejecutar nada.
+
+Tras instalar, toca **Configurar** e introduce el servidor, tu usuario y tu contraseña. El botón
+**Probar conexión** verifica que las credenciales funcionan antes de que empieces a navegar.
+
+## Probar en local
+
+Clona la carpeta del sdk de cualquier plugin de ejemplo de Kino
+([kino-plugin-archive](https://github.com/kinotvapp/kino-plugin-archive) es el más simple) y copia
+la carpeta `sdk/` aquí. Luego:
+
+```bash
+# Validar el manifiesto y los exports
 node sdk/validate.mjs .
-node sdk/init.mjs ../my-plugin --host example.com
+
+# Probar las funciones (necesitas KINO_SERVER, KINO_USER, KINO_PASS)
+KINO_SERVER=http://tu-servidor:8080 KINO_USER=user KINO_PASS=pass \
+  node sdk/run.mjs . home
+
+node sdk/run.mjs . search "breaking bad"
+node sdk/run.mjs . browse "vod-cat:1" null
+node sdk/run.mjs . episodes "ser:12345"
+node sdk/run.mjs . resolve "vod:67890:mkv"
+
+# Probar los colores del tema
+node sdk/run.mjs . theme
+
+# Probar la sección propia
+node sdk/run.mjs . section live
+node sdk/run.mjs . section peliculas
+node sdk/run.mjs . categories
 ```
 
-Copy `plugin.js` and `kino-plugin.json`, change them, and publish your repository the same way.
+El kit de Node simula `kino.config`, `kino.fetch`, `kino.storage` y `kino.error` con el mismo
+comportamiento que la app. Las respuestas del servidor real se pueden grabar con `--record` y
+reproducir sin conexión con `--replay`.
 
-## License
+## Estructura del repositorio
 
-The code in this repository is licensed under the [Apache License 2.0](LICENSE). Copyright 2026 kinotvapp.
+```
+kino-plugin.json   manifiesto (id, hosts, capabilities, theme, section, settings)
+plugin.js          código del plugin: módulo ES, sin dependencias externas
+README.md          este archivo
+icon.png           ícono cuadrado opcional, máximo 128 KB (añádelo tú)
+sdk/               kit de Node para probar en local (cópialo de kino-plugin-archive)
+```
 
-## License note
+## Nota sobre el servicio
 
-What this plugin plays is not ours to license: the videos are public domain or carry the license
-their uploader chose on archive.org. Check an item's page before you reuse or redistribute it.
+Este plugin es solo el conector entre Kino y tu proveedor de IPTV. No distribuye ni aloja
+contenido. Es tu responsabilidad usar el plugin con una suscripción válida a tu servicio y respetar
+los términos de ese servicio.
